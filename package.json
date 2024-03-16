@@ -1,0 +1,18 @@
+{
+  "name": "routio",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Routio is an online routing service provider enabling users to solve Travelling Salesman Problems (TSP) via the Genetic Algorithm, offering optimal solutions with plans for additional algorithms integration.",
+  "main": "./src/index.ts",
+  "scripts": {
+    "start": "nodemon ./src/index.ts"
+  },
+  "author": "Mohammadi",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.11.28",
+    "nodemon": "^3.1.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.2"
+  }
+}
