@@ -10,9 +10,16 @@
   "author": "Mohammadi",
   "license": "ISC",
   "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/mongoose": "^5.11.97",
     "@types/node": "^20.11.28",
     "nodemon": "^3.1.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.2"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.19.1",
+    "mongoose": "^8.2.2"
   }
 }
