@@ -2,6 +2,10 @@ import { join } from 'node:path';
 
 // Section: Problem Model Constants
 export const PROBLEM_NOT_PROVIDED_ERR = 'Providing the problem is necessary';
+export const PROBLEM_COORDS_FILE_ERR =
+  'Coordinates file is either missing or has an invalid format';
+export const PROBLEM_NOT_VALID_ERR = 'Problem is not valid';
+
 export const COSTS_NOT_FULLY_PROVIDED_ERR =
   'Providing all cost related data is necessary';
 

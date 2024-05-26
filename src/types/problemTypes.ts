@@ -1,7 +1,7 @@
 import { SupportedAlgorithm, problemConstants as pc } from '../constants';
 
 export type Problem = {
-  path?: string; // Path to the TSP instance file
+  path: string; // Path to the TSP instance file
   problemType: pc.ProblemType; // Type of TSP problem (e.g., TSP, ATSP)
   edgeWeightType: pc.EdgeWeightType; // Type of edge weight (e.g., EUC_2D, GEO)
   dimension: number; // Dimensionality of the TSP problem
@@ -14,7 +14,7 @@ export type Problem = {
 export type SolvedProblem = Problem & {
   solvedIn: number; // Time taken to solve the problem in seconds
   generations: number; // Number of generations used in the algorithm
-  solution: number[]; // Array representing the solved TSP path
+  solution: number[] | string; // Array representing the solved TSP path
   bestCost: number; // Cost of the best solution found
   worstCost: number; // Cost of the worst solution found
   bestCostGeneration: number; // Generation number that best cost was found in
@@ -23,7 +23,8 @@ export type SolvedProblem = Problem & {
   worstCostHistory: number[]; // Worst cost per generation during the solution process
 };
 
-// The following interface is being created since Mongoose is not able to infer above types correctly, because of the intersection parts.
+// The following interface is being created since Mongoose is not able to infer
+// above types correctly, because of the intersection parts.
 export interface IProblemDoc {
   path?: string;
   problemType: pc.ProblemType;
@@ -36,7 +37,7 @@ export interface IProblemDoc {
   bestKnownCost?: number;
   solvedIn: number;
   generations: number;
-  solution: number[];
+  solution: number[] | string;
   bestCost: number;
   worstCost: number;
   bestCostGeneration: number;

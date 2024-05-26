@@ -1,3 +1,6 @@
+export const CONFIGS_VALID_ERR =
+  'The config object is not valid or missing properties';
+
 export enum SupportedAlgorithm {
-  GA = 'genetic',
+  GA = 'GA',
 }

@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 
 import { Schema, SchemaTypes, model } from 'mongoose';
+import jSchema from 'jsonschema';
 
 import { IProblemDoc } from '../types';
 import { capitalize, AppError } from '../utils';
@@ -262,5 +263,75 @@ problemSchema.pre('save', function (next): void {
 
 // Section: Model
 const Problem = model('Problem', problemSchema);
+
+// Section: Problem JSON-Schema
+// This schema is designed for use by the foreline services,
+// enabling them to validate incoming requests that include the problem to be solved.
+
+export const schema: jSchema.Schema = {
+  $schema: 'http://json-schema.org/draft-07/schema#',
+  type: 'object',
+  properties: {
+    path: { type: 'string', description: 'Path to the TSP instance file' },
+
+    problemType: {
+      type: 'string',
+      enum: [pc.ProblemType.TSP, pc.ProblemType.ATSP],
+      description: 'Type of TSP problem',
+    },
+
+    edgeWeightType: {
+      type: 'string',
+      enum: [
+        pc.EdgeWeightType.EUC2D,
+        pc.EdgeWeightType.GEO,
+        pc.EdgeWeightType.EXPLICIT,
+      ],
+      description: 'Type of edge weight',
+    },
+
+    dimension: {
+      type: 'integer',
+      description: 'Dimensionality of the TSP problem',
+      minimum: pc.DIMENSION_MIN_VALUE,
+      maximum: pc.DIMENSION_MAX_VALUE,
+    },
+
+    algorithm: {
+      type: 'string',
+      description: 'Algorithm to be used for solving the TSP problem',
+      enum: [SupportedAlgorithm.GA], // Add supported algorithms here
+    },
+
+    isRealInstance: { type: 'boolean' },
+
+    instanceName: { type: 'string' },
+
+    bestKnownCost: { type: 'number', minimum: 0 },
+  },
+  required: ['path', 'problemType', 'edgeWeightType', 'dimension', 'algorithm'],
+
+  oneOf: [
+    {
+      properties: {
+        isRealInstance: { const: true },
+        apiName: {
+          type: 'string',
+          enum: [pc.SupportedApi.NESHAN], // Add supported APIs here
+        },
+      },
+      required: ['isRealInstance', 'apiName'],
+    },
+
+    {
+      properties: {
+        isRealInstance: { const: false },
+        instanceName: { type: 'string' },
+        bestKnownCost: { type: 'number', minimum: 0 },
+      },
+      required: ['isRealInstance', 'instanceName', 'bestKnownCost'],
+    },
+  ],
+};
 
 export default Problem;

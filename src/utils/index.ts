@@ -3,4 +3,4 @@ import AppError from './appError';
 import catchAsync from './catchAsync';
 
 export { QueryOptions, AppError, catchAsync };
-export { capitalize, raise } from './general';
+export { capitalize, raise, random, fact } from './general';
