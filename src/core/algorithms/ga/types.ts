@@ -6,7 +6,6 @@ export interface IConfigs {
   nnaPercentage?: number; // Percentage of chromosomes selected using Nearest Neighbor Algorithm (NNA)
   maxGens?: number; // Maximum number of generations
   maxChrAge?: number; // Maximum age (number of generations) for a chromosome
-
   mutationRate?: number; // Percentage of chromosomes undergoing mutation
   eliteCount?: number; // Number of elite chromosomes preserved in each generation
 }

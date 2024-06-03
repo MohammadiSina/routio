@@ -32,21 +32,26 @@ class Broker {
    * @throws {AppError} Throws an error if the problem type is not supported.
    */
   async exec(configs: BaseConfigs): Promise<SolvedProblem> {
-    // Read the coordinates from the problem path
-    const coords = await svc.getCoords(
-      this._problem.path,
-      this._problem.isRealInstance
-    );
-
-    // Assign the cost table calculator for unreal instances later based on isRealInstance value...
-    // For now, only real instance problems could be processed, since the focus is on real ones.
+    // Generate the cost table of the problem instance
     let costTable: CostTable = [];
 
-    if (this._problem.isRealInstance)
+    if (this._problem.isRealInstance) {
+      // Read the coordinates from the problem path
+      const coords = await svc.getCoords(
+        this._problem.path,
+        this._problem.isRealInstance
+      );
+
       costTable = await svc.calculateCostTable(coords, [
         this._apiKey!,
         this._problem.apiName,
       ]);
+    }
+    // Calculate the cost table for static problem instances
+    else if (this._problem.instanceName)
+      costTable = await svc.calculateStaticCostTable(
+        this._problem.instanceName
+      );
     else raise(bc.PROBLEM_NOT_SUPPORTED, HSC.BAD_REQUEST);
 
     // Handle the required configurations that are included in the problem object,

@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import { isLatLong } from 'validator';
 
@@ -82,7 +83,7 @@ export async function getNeshanRoute(
  */
 export async function getCoords(
   path: string,
-  isRealInstance: boolean
+  isRealInstance: boolean = true
 ): Promise<Coordinate[]> {
   const coordsStr = await readFile(path, 'utf8');
   if (!coordsStr) raise(pc.PROBLEM_COORDS_FILE_ERR, HSC.BAD_REQUEST);
@@ -160,4 +161,158 @@ export async function calculateCostTable(
   });
 
   return costTable;
+}
+
+/**
+ * Calculates a static cost table for a given TSP instance.
+ * @param {string} instanceName - The name of the TSP instance file.
+ * @returns {Promise<CostTable>} - A promise that resolves to the cost table for the given TSP instance.
+ * @throws {Error} - Throws an error if the edge weight type is not supported.
+ */
+export async function calculateStaticCostTable(
+  instanceName: string
+): Promise<CostTable> {
+  const instance = await readTSPLIBFile(instanceName);
+  const costTable: CostTable = [];
+
+  switch (instance.edgeWeightType) {
+    // Generate cost table for EUC_2D based problems
+    case pc.EdgeWeightType.EUC2D:
+      for (let origin of instance.nodeCoordinates)
+        for (let dest of instance.nodeCoordinates)
+          costTable.push([
+            origin.nodeIndex,
+            dest.nodeIndex,
+            calculateEuclideanDistance(origin, dest),
+          ]);
+      break;
+
+    // Add other supported edge types if needed ...
+    default:
+      raise(bc.PROBLEM_NOT_SUPPORTED, HSC.BAD_REQUEST);
+  }
+
+  return costTable;
+}
+
+/**
+ * Parses the content of a TSPLIB file which represents a problem instance.
+ * @param {string} content - The content of the TSPLIB file.
+ * @returns {ITSPData} The parsed data including name, type, dimension, node coordinates, and edge weights.
+ */
+function parseTSPLIB(content: string): bc.ITSPData {
+  const lines = content.split(/\n|\r/gm);
+  const data: bc.ITSPData = {
+    name: '',
+    type: '',
+    dimension: 0,
+    edgeWeightType: '',
+    nodeCoordinates: [],
+    edgeWeightMatrix: [],
+  };
+
+  let readingNodes = false;
+  let readingEdges = false;
+
+  lines.forEach((line) => {
+    const trimmedLine = line.trim();
+
+    // Skip empty lines
+    if (!trimmedLine) return;
+
+    const [key, ...values] = trimmedLine.split(/\s+/);
+
+    switch (key) {
+      case 'NAME:':
+        data.name = values.join(' ');
+        break;
+      case 'TYPE:':
+        data.type = values.join(' ');
+        break;
+      case 'DIMENSION:':
+        data.dimension = parseInt(values[0], 10);
+        break;
+      case 'EDGE_WEIGHT_TYPE:':
+        data.edgeWeightType = values.join(' ');
+        break;
+      case 'DISPLAY_DATA_SECTION':
+        readingNodes = false;
+        readingEdges = false;
+        break;
+      case 'EDGE_WEIGHT_SECTION':
+        readingEdges = true;
+        readingNodes = false;
+        break;
+      case 'NODE_COORD_SECTION':
+        readingNodes = true;
+        readingEdges = false;
+        break;
+      case 'EOF':
+        readingNodes = false;
+        readingEdges = false;
+        break;
+
+      default:
+        if (readingNodes) {
+          const nodeIndex = parseInt(key, 10) - 1;
+          const x = parseFloat(values[0]);
+          const y = parseFloat(values[1]);
+
+          data.nodeCoordinates.push({ nodeIndex, x, y });
+        } else if (readingEdges) {
+          const numericValues = [
+            parseFloat(key),
+            ...values.map((value) => {
+              const number = parseFloat(value);
+
+              return number;
+            }),
+          ];
+
+          data.edgeWeightMatrix.push(...numericValues);
+        }
+    }
+  });
+
+  return data;
+}
+
+/**
+ * Reads and parses a TSPLIB file.
+ * @param {string} instanceName - The name to the TSPLIB file in the static directory (extension of the problem must be provided)
+ * @returns {Promise<ITSPData>} A promise that resolves to the parsed data.
+ * @throws {AppError} Throws error if the problem instance is not found.
+ */
+async function readTSPLIBFile(instanceName: string): Promise<bc.ITSPData> {
+  const filePath = join(bc.PROBLEM_STATIC_DIRECTORY, instanceName);
+
+  const content = await readFile(filePath, 'utf8');
+  if (!content) raise(bc.PROBLEM_NOT_FOUND, HSC.BAD_REQUEST);
+
+  return parseTSPLIB(content);
+}
+
+/**
+ * Calculates the Euclidean distance between two points.
+ * @param {ICoord} pointA - The first point.
+ * @param {ICoord} pointB - The second point.
+ * @param {2 | 3} space - The dimensionality of the space (2 for 2D, 3 for 3D). Defaults to 2.
+ * @returns {number} The Euclidean distance between the two points.
+ */
+function calculateEuclideanDistance(
+  pointA: bc.ICoord,
+  pointB: bc.ICoord,
+  space: 2 | 3 = 2
+): number {
+  const deltaX = pointB.x - pointA.x;
+  const deltaY = pointB.y - pointA.y;
+
+  if (space === 3 && pointA.z !== undefined && pointB.z !== undefined) {
+    const deltaZ = pointB.z - pointA.z;
+    return Math.trunc(
+      Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ)
+    );
+  }
+
+  return Math.trunc(Math.sqrt(deltaX * deltaX + deltaY * deltaY));
 }

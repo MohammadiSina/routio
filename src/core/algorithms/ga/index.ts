@@ -21,13 +21,13 @@ class GA extends BaseAlgorithm<IConfigs> {
   private _isOriginFixed: boolean;
   private _returnToOrigin: boolean;
   private _populationSize: number;
+  private _uniquePopulationHistory: Population = new Set();
   private _isProblemLarge: boolean;
 
   private _generationCount: number = 0;
   private _mutationCount: number;
   private _eliteCount: number;
   private _maxGens: number;
-
   private _maxChromosomeAge: number;
 
   private _solution: Partial<SolvedProblem> = {};
@@ -60,7 +60,12 @@ class GA extends BaseAlgorithm<IConfigs> {
 
     this._returnToOrigin = this.configs.returnToOrigin ?? true;
 
-    const mutationRate = this.configs.mutationRate ?? gc.MUTATION_RATE;
+    const mutationRate =
+      !this.configs.mutationRate ||
+      this.configs.mutationRate > gc.MUTATION_MAX_LIMIT
+        ? gc.MUTATION_RATE
+        : this.configs.mutationRate;
+
     this._mutationCount =
       Math.trunc((this._populationSize * mutationRate) / 100) || 1;
 
@@ -84,6 +89,7 @@ class GA extends BaseAlgorithm<IConfigs> {
         let evaluatedPopulation = this._evaluatePopulationFitness(population);
 
         this._registerSolutionStats(evaluatedPopulation);
+        this._uniquePopulationHistory = new Set(population);
 
         while (!this._hasEndingConditionsMet()) {
           const evolvedPopulation = this._evolvePopulation(evaluatedPopulation);
@@ -109,7 +115,6 @@ class GA extends BaseAlgorithm<IConfigs> {
 
   /**
    * Registers solution statistics from the evaluated population.
-   *
    * @param {EvaluatedPopulation} population - The evaluated population map (chromosome -> fitness).
    * @private
    */
@@ -128,8 +133,8 @@ class GA extends BaseAlgorithm<IConfigs> {
     const worstChromosome = sortedPopulation[0];
 
     // Calculate their costs
-    const bestCost = 1 / bestChromosome[1];
-    const worstCost = 1 / worstChromosome[1];
+    const bestCost = Math.trunc(1 / bestChromosome[1]);
+    const worstCost = Math.trunc(1 / worstChromosome[1]);
 
     // Update best solution statistics if necessary
     if (!this._solution.bestCost || this._solution.bestCost > bestCost) {
@@ -164,16 +169,24 @@ class GA extends BaseAlgorithm<IConfigs> {
     if (this._generationCount > this._maxGens) return true;
 
     // Check if the most optimal chromosome is too old
-    // If the age of the most optimal chromosome exceeds the maximum allowed chromosome age, terminate the algorithm
-    if (this._solution.bestCostGeneration)
-      if (
-        this._generationCount - this._solution.bestCostGeneration >
-        this._maxChromosomeAge
-      )
-        return true;
+    // If the age of the most optimal chromosome exceeds the maximum
+    // allowed chromosome age, terminate the algorithm
+    if (this._solution.bestCostGeneration) {
+      const bestChromosomeAge =
+        this._generationCount - this._solution.bestCostGeneration;
 
-    // Check if the problem scale is large enough
-    // If the problem is small, terminate the algorithm because all possible solutions are generated
+      if (bestChromosomeAge > this._maxChromosomeAge) return true;
+
+      // If there is a high likelihood of encountering a local optimum,
+      // consider increasing the mutation rate
+      const isLocalOptimumPossible = bestChromosomeAge > 50;
+      if (isLocalOptimumPossible)
+        if (this._mutationCount + 1 < gc.MUTATION_MAX_LIMIT)
+          this._mutationCount++;
+    }
+
+    // Determine if the problem scale is large enough.
+    // If the problem is small, terminate the algorithm as all possible solutions have been generated.
     if (!this._isProblemLarge) return true;
 
     // If none of the termination conditions are met, continue the algorithm
@@ -234,7 +247,7 @@ class GA extends BaseAlgorithm<IConfigs> {
    * @returns {Population} - The evolved population.
    */
   private _evolvePopulation(lastGeneration: EvaluatedPopulation): Population {
-    const population: Population = new Set();
+    let population: Population = new Set();
 
     // Generates mutated chromosomes for the new population.
     while (population.size < this._mutationCount) {
@@ -247,7 +260,10 @@ class GA extends BaseAlgorithm<IConfigs> {
 
     // Generates crossovered chromosomes for the new population.
     while (population.size < this._populationSize) {
-      const parents = this._rouletteWheelSelection(lastGeneration);
+      // The Roulette Wheel Mechanism is also available as a method in the algorithm.
+      // Depending on your instance properties and the current situation,
+      // you may consider using it instead of the Ranking Selection method.
+      const parents = this._rankingSelection(lastGeneration);
       const offsprings = this._mate(parents);
 
       for (let chromosome of offsprings)
@@ -257,6 +273,52 @@ class GA extends BaseAlgorithm<IConfigs> {
         )
           if (!this._isProblemLarge || !lastGeneration.has(chromosome))
             population.add(chromosome);
+    }
+
+    // Ensure there's always some brand new chromosomes in the new generated population
+    const uniqueChrsPerGenerationNumber = Math.floor(
+      this._populationSize * 0.3
+    );
+    let existingUniqueCount = 0;
+
+    for (let chr of population)
+      if (this._uniquePopulationHistory.has(chr)) existingUniqueCount++;
+
+    const neededUniqueChrsForPopulationCount =
+      uniqueChrsPerGenerationNumber - existingUniqueCount;
+
+    const uniqueChrsIndicesInPopulation = new Set<number>();
+    let generatedUniqueChromosomesCount = 0;
+
+    while (
+      generatedUniqueChromosomesCount < neededUniqueChrsForPopulationCount
+    ) {
+      // Generate some new ones by mutation
+      const chromosome = this._randomSelection(lastGeneration);
+      let uniqueChromosome = this._mutate(chromosome);
+
+      if (this._uniquePopulationHistory.has(uniqueChromosome)) continue;
+
+      // To create space for the new chromosomes,
+      // randomly select existing chromosomes and remove them from the population.
+      let isSuitablePlaceFound = false;
+      let randomChromosomeIndex = 0;
+
+      while (!isSuitablePlaceFound) {
+        randomChromosomeIndex = random(0, population.size - 1);
+        if (uniqueChrsIndicesInPopulation.has(randomChromosomeIndex)) continue;
+        uniqueChrsIndicesInPopulation.add(randomChromosomeIndex);
+
+        isSuitablePlaceFound = true;
+      }
+
+      // Add the new chromosomes to the evolved population and unique population history sets
+      const populationArray = [...population];
+      populationArray.splice(randomChromosomeIndex, 1, uniqueChromosome);
+
+      population = new Set(populationArray);
+      this._uniquePopulationHistory.add(uniqueChromosome);
+      generatedUniqueChromosomesCount++;
     }
 
     return population;
@@ -286,7 +348,9 @@ class GA extends BaseAlgorithm<IConfigs> {
     nextGeneration.splice(
       nextGeneration.length - this._eliteCount,
       this._eliteCount,
-      ...sortedLastGeneration.slice(0, this._eliteCount + 1)
+      ...sortedLastGeneration.slice(
+        sortedLastGeneration.length - this._eliteCount
+      )
     );
 
     // Return the new generation as a map
@@ -303,6 +367,7 @@ class GA extends BaseAlgorithm<IConfigs> {
    * @throws {Error} If the given population is not a Map or contains fewer than 2 chromosomes.
    * @private Internal method intended for use within the current class only.
    */
+  // @ts-ignore
   private _rouletteWheelSelection(population: EvaluatedPopulation): Couple {
     if (!(population instanceof Map) || population.size < 2)
       raise(gc.SELECTION_INVALID_POPULATION, HSC.INTERNAL_SERVER_ERROR);
@@ -329,6 +394,39 @@ class GA extends BaseAlgorithm<IConfigs> {
       const selected = selectChromosome(index);
       if (selected) {
         selectedChromosomes.add(selected);
+      }
+    }
+
+    return selectedChromosomes;
+  }
+  /**
+   * Selects chromosomes from the population using the ranking selection method.
+   * @param {EvaluatedPopulation} population - The population to select from.
+   * @returns {Couple} - A set of selected chromosomes.
+   */
+  private _rankingSelection(population: EvaluatedPopulation): Couple {
+    // Ensure the population entries are sorted based on fitness
+    const sortedPopulation = quickSort([...population.entries()]);
+    const selectedChromosomes: Couple = new Set();
+
+    // Calculate the sum of ranks
+    const rankSum =
+      (sortedPopulation.length * (sortedPopulation.length + 1)) / 2;
+
+    while (selectedChromosomes.size < 2) {
+      const pick = Math.random() * rankSum;
+      let cumulativeRank = 0;
+
+      for (let i = 0; i < sortedPopulation.length; i++) {
+        cumulativeRank += i + 1;
+
+        if (
+          cumulativeRank >= pick &&
+          !selectedChromosomes.has(sortedPopulation[i][0])
+        ) {
+          selectedChromosomes.add(sortedPopulation[i][0]);
+          break; // Exit the loop after adding one chromosome
+        }
       }
     }
 
@@ -361,10 +459,8 @@ class GA extends BaseAlgorithm<IConfigs> {
    */
   private _mate(parents: Couple): Couple {
     // Ensure the input is a Set and contains exactly two chromosomes
-    if (!(parents instanceof Set) || parents.size !== 2) {
-      console.log(parents);
+    if (!(parents instanceof Set) || parents.size !== 2)
       raise(gc.INVALID_COUPLE_TYPE, HSC.INTERNAL_SERVER_ERROR);
-    }
 
     // Convert parent chromosomes from Sets to Arrays
     const [parentA, parentB] = [...parents].map((chromosome) => {
@@ -377,8 +473,8 @@ class GA extends BaseAlgorithm<IConfigs> {
 
     // Determine the number of loci to select for crossover
     const maxLocusSelectionCount = this._isOriginFixed
-      ? Math.trunc(this.configs.dimension - 1)
-      : Math.trunc(this.configs.dimension);
+      ? Math.trunc((this.configs.dimension - 1) / 2)
+      : Math.trunc(this.configs.dimension / 2);
     const locusSelectionCount = random(1, maxLocusSelectionCount);
 
     // Randomly select loci for crossover
@@ -467,9 +563,6 @@ class GA extends BaseAlgorithm<IConfigs> {
 
     // Perform displacement mutation
     chromosomeArray.splice(displacementPosition, 0, ...invertedPart);
-
-    if (chromosomeArray.length !== chromosome.size)
-      throw new Error('Mutate Offspring chromosomes have incorrect gene count');
 
     return chrToStr(new Set(chromosomeArray));
   }
